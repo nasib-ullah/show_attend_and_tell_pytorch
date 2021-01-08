@@ -1,5 +1,5 @@
 # Show attend and tell pytorch
-This repository contains Pytorch implementation of the the image captioning model published in the paper [Show attend and tell](https://https://arxiv.org/abs/1502.03044) (Xu et al, 2015)
+This repository contains Pytorch implementation of the image captioning model published in the paper [Show attend and tell](https://https://arxiv.org/abs/1502.03044) (Xu et al, 2015)
 
 
 ## Environment
