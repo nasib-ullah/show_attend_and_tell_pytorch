@@ -1,3 +1,4 @@
+__author__ = 'Nasibullah'
 
 import os
 import random
@@ -297,28 +298,3 @@ class ShowAttendTell(nn.Module):
             caps_text.append(tmp)
         return caption,caps_text
     
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
