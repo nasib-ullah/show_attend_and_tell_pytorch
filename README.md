@@ -45,8 +45,8 @@ You can change some hyperparameters by modifying `config.py`.
 
  | Encoder | Trained on | BLEU4 | CIDEr | METEOR | ROUGE_L |
  | :---: | :---: | :---: | :---: | :---: | :---: |
- | VGG | COCO2014 | 41.92 | 51.67 | 29.6 | - |
- | Resnet101 | COCO2014 | 45.3 | 76.2 | 31.9 | 64.2 |
+ | VGG | COCO2014 | 24.16 | 51.67 | 22.0 | - |
+ | Resnet101 | COCO2014 | - | 76.2 | 23.9 | 64.2 |
 
 ## Qualitative Results
 
