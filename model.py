@@ -10,6 +10,7 @@ import torch.optim as optim
 import torchvision.transforms as transforms
 from torchvision import models
 from torch.nn import functional as F
+from dictionary import Vocabulary,EOS_token,PAD_token,SOS_token,UNK_token
 
 
 class Encoder(nn.Module):
@@ -47,7 +48,7 @@ class SpatialAttention(nn.Module):
         '''
         self.hidden_size = Config.hidden_size
         self.feat_size = Config.feat_size
-        self.bottleneck_size = Config.bottleneck_size
+        self.bottleneck_size = Config.attn_size
         
         self.decoder_projection = nn.Linear(self.hidden_size,self.bottleneck_size)
         self.encoder_projection = nn.Linear(self.feat_size, self.bottleneck_size)
@@ -71,7 +72,7 @@ class SpatialAttention(nn.Module):
 
 class Decoder(nn.Module):
     
-    def __init__(self, Config, num_layers = 1, num_directions = 1):
+    def __init__(self, voc, Config, num_layers = 1, num_directions = 1):
         super(Decoder, self).__init__()
         '''
         Decoder, Basically a language model.
@@ -88,7 +89,7 @@ class Decoder(nn.Module):
         self.embedding_size = Config.embedding_size
         self.hidden_size = Config.hidden_size
         self.attn_size = Config.attn_size
-        self.output_size = Config.output_size
+        self.output_size = voc.num_words
         self.rnn_dropout = Config.rnn_dropout
         
         self.num_layers = num_layers
@@ -97,9 +98,7 @@ class Decoder(nn.Module):
         # Define layers
         self.embedding = nn.Embedding(self.output_size, self.embedding_size)
         
-        self.attention = SpatialAttention(hidden_size = self.num_directions*self.hidden_size,
-                                          feat_size=self.feat_size,
-                                          bottleneck_size=self.attn_size)
+        self.attention = SpatialAttention(Config)
         
         
         self.rnn = nn.LSTM(self.embedding_size+self.feat_size, self.hidden_size,
@@ -108,7 +107,7 @@ class Decoder(nn.Module):
         
         self.out = nn.Linear(self.num_directions*self.hidden_size, self.output_size)
 
-    def get_last_hidden(self, hidden):
+    def _get_last_hidden(self, hidden):
         
         last_hidden = hidden[0] if isinstance(hidden,tuple) else hidden
         last_hidden = last_hidden.view(self.num_layers, self.num_directions,
@@ -145,7 +144,7 @@ class ShowAttendTell(nn.Module):
     def __init__(self,vocabulary,Config):
         super(ShowAttendTell,self).__init__()
         self.encoder = Encoder().to(Config.device)
-        self.decoder = Decoder(Config).to(Config.device)
+        self.decoder = Decoder(vocabulary,Config).to(Config.device)
         self.voc = vocabulary
         self.batch_size = Config.batch_size
         self.enc_optimizer = optim.Adam(self.encoder.parameters(),lr=Config.encoder_lr)
@@ -164,10 +163,17 @@ class ShowAttendTell(nn.Module):
         
     def load(self,encoder_path = 'Save/VGG_encoder_10.pt',decoder_path='Save/VGG_decoder_10.pt'):
         if os.path.exists(encoder_path) and os.path.exists(decoder_path):
-            self.encoder = torch.load(encoder_path)
-            self.decoder = torch.load(decoder_path)
+            self.encoder.load_state_dict(torch.load(encoder_path))
+            self.decoder.load_state_dict(torch.load(decoder_path))
         else:
             print('File not found Error..')
+
+    def save(self,encoder_path, decoder_path):
+        if os.path.exists(encoder_path) and os.path.exists(decoder_path):
+            torch.save(model.encoder.state_dict(),encoder_path)
+            torch.save(model.decoder.state_dict(),decoder_path)
+        else:
+            print('Invalid path address given.')
         
     def train_epoch(self,dataloader):
         '''
@@ -271,7 +277,7 @@ class ShowAttendTell(nn.Module):
 
         return sum(print_losses) / n_totals
             
-        
+    @torch.no_grad()
     def Greedy_Decoding(self,features,max_length=15):
         enc_output = self.encoder(features)
         batch_size = features.size()[0]
@@ -280,8 +286,10 @@ class ShowAttendTell(nn.Module):
         
         decoder_input = torch.LongTensor([[SOS_token for _ in range(batch_size)]]).to(self.device)
         caption = []
+        attention_values = []
         for _ in range(max_length):
             decoder_output, decoder_hidden, attn_values = self.decoder(decoder_input, decoder_hidden, enc_output)
+            attention_values.append(attn_values.squeeze(2))
             _, topi = decoder_output.topk(1)
             decoder_input = topi.permute(1,0).to(self.device)
             caption.append(topi.squeeze(1).cpu())
@@ -296,5 +304,5 @@ class ShowAttendTell(nn.Module):
                     tmp.append(self.voc.index2word[token.item()])
             tmp = ' '.join(x for x in tmp)
             caps_text.append(tmp)
-        return caption,caps_text
+        return caption,caps_text,torch.stack(attention_values,0).cpu().numpy()
     
