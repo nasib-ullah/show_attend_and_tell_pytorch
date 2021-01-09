@@ -1,4 +1,4 @@
-# Show attend and tell pytorch
+# Image Captioning : Show attend and tell pytorch
 This repository contains Pytorch implementation of the image captioning model published in the paper [Show attend and tell](https://https://arxiv.org/abs/1502.03044) (Xu et al, 2015)
 
 
@@ -47,3 +47,26 @@ You can change some hyperparameters by modifying `config.py`.
  | :---: | :---: | :---: | :---: | :---: | :---: |
  | VGG | COCO2014 | 41.92 | 51.67 | 29.6 | - |
  | Resnet101 | COCO2014 | 45.3 | 76.2 | 31.9 | 64.2 |
+
+## Qualitative Results
+
+#### Training data
+##### (1) Generated Caption : A Train traveling down tracks next to a Forest.
+![](https://github.com/nasib104/show_attend_and_tell_pytorch/blob/main/results/train_1.png "Logo Title Text 1")
+
+##### (2) Generated Caption : A man riding a Skateboard down a street.
+![](https://github.com/nasib104/show_attend_and_tell_pytorch/blob/main/results/train_2.png "Logo Title Text 1")
+
+#### Validation data
+##### Generated Caption : A group of people standing around a truck.
+![](https://github.com/nasib104/show_attend_and_tell_pytorch/blob/main/results/val_1.png "Logo Title Text 1")
+
+##### Generated Caption : A dog sitting on a boat in the water.
+![](https://github.com/nasib104/show_attend_and_tell_pytorch/blob/main/results/val_2.png "Logo Title Text 1")
+
+#### Test data
+##### Generated Caption : A women is sitting at a table with a plate of food.
+![](https://github.com/nasib104/show_attend_and_tell_pytorch/blob/main/results/test_1.png "Logo Title Text 1")
+
+##### Generated Caption : A person in a red jacket is standing on a snow covered slope.
+![](https://github.com/nasib104/show_attend_and_tell_pytorch/blob/main/results/test_2.png "Logo Title Text 1")
