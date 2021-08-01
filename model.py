@@ -1,4 +1,8 @@
-__author__ = 'Nasibullah'
+'''
+Module :  Show Attend and Tell model
+Authors:  Nasibullah (nasibullah104@gmail.com)
+Beam decoding will be added in future
+'''
 
 import os
 import random
@@ -13,23 +17,30 @@ from torch.nn import functional as F
 from dictionary import Vocabulary,EOS_token,PAD_token,SOS_token,UNK_token
 
 
+
 class Encoder(nn.Module):
     
-    def __init__(self):
+    def __init__(self,cfg):
         super(Encoder,self).__init__()
-        base_model = models.vgg19(pretrained=True)
-        layers_to_use = list(base_model.features.children())[:29]
-        self.model = nn.Sequential(*layers_to_use)
+        self.feat_size = cfg.feat_size
+        if cfg.encoder_arch == 'vgg':
+            base_model = models.vgg19(pretrained=True)
+            layers_to_use = list(base_model.features.children())[:29]
+            self.model = nn.Sequential(*layers_to_use)
+        if cfg.encoder_arch == 'resnet':
+            base_model = models.resnet101(pretrained=True)
+            layers_to_use = list(base_model.children())[:-3]
+            self.model = nn.Sequential(*layers_to_use)
         
     def forward(self,image_batch):
         batch_size = image_batch.size()[0]
-        output = self.model(image_batch).view(batch_size,512,-1)
+        output = self.model(image_batch).view(batch_size,self.feat_size,-1)
         output = output.permute(0,2,1)
         return output
 
 
 class SpatialAttention(nn.Module):
-    def __init__(self,Config):
+    def __init__(self,cfg):
         super(SpatialAttention,self).__init__()
         '''
         Spatial Attention module. It depends on previous hidden memory in the decoder(of shape hidden_size),
@@ -46,9 +57,9 @@ class SpatialAttention(nn.Module):
           feat_size : feature size of each grid (annotation vector) at encoder side.
           bottleneck_size : intermediate size.
         '''
-        self.hidden_size = Config.hidden_size
-        self.feat_size = Config.feat_size
-        self.bottleneck_size = Config.attn_size
+        self.hidden_size = cfg.hidden_size
+        self.feat_size = cfg.feat_size
+        self.bottleneck_size = cfg.attn_size
         
         self.decoder_projection = nn.Linear(self.hidden_size,self.bottleneck_size)
         self.encoder_projection = nn.Linear(self.feat_size, self.bottleneck_size)
@@ -72,7 +83,7 @@ class SpatialAttention(nn.Module):
 
 class Decoder(nn.Module):
     
-    def __init__(self, voc, Config, num_layers = 1, num_directions = 1):
+    def __init__(self, voc, cfg):
         super(Decoder, self).__init__()
         '''
         Decoder, Basically a language model.
@@ -84,24 +95,24 @@ class Decoder(nn.Module):
         '''
 
         # Keep for reference
-        self.feat_size = Config.feat_size
-        self.feat_len = Config.feat_len
-        self.embedding_size = Config.embedding_size
-        self.hidden_size = Config.hidden_size
-        self.attn_size = Config.attn_size
+        self.feat_size = cfg.feat_size
+        self.feat_len = cfg.feat_len
+        self.embedding_size = cfg.embedding_size
+        self.hidden_size = cfg.hidden_size
+        self.attn_size = cfg.attn_size
         self.output_size = voc.num_words
-        self.rnn_dropout = Config.rnn_dropout
+        self.rnn_dropout = cfg.rnn_dropout
         
-        self.num_layers = num_layers
-        self.num_directions = num_directions
+        self.num_layers = cfg.num_layers
+        self.num_directions = cfg.num_directions
 
         # Define layers
         self.embedding = nn.Embedding(self.output_size, self.embedding_size)
         
-        self.attention = SpatialAttention(Config)
+        self.attention = SpatialAttention(cfg)
         
         
-        self.rnn = nn.LSTM(self.embedding_size+self.feat_size, self.hidden_size,
+        self.rnn = nn.LSTM(cfg.decoder_input_size, self.hidden_size,
                            self.num_layers, dropout=self.rnn_dropout,batch_first=False, 
                           bidirectional=True if self.num_directions ==2 else False)
         
@@ -141,24 +152,23 @@ class Decoder(nn.Module):
 
 class ShowAttendTell(nn.Module):
     
-    def __init__(self,vocabulary,Config):
+    def __init__(self,voc,cfg):
         super(ShowAttendTell,self).__init__()
-        self.encoder = Encoder().to(Config.device)
-        self.decoder = Decoder(vocabulary,Config).to(Config.device)
-        self.voc = vocabulary
-        self.batch_size = Config.batch_size
-        self.enc_optimizer = optim.Adam(self.encoder.parameters(),lr=Config.encoder_lr)
-        self.dec_optimizer = optim.Adam(self.decoder.parameters(),lr=Config.decoder_lr)
-        self.teacher_forcing_ratio = Config.teacher_forcing_ratio
-        self.print_every = Config.print_every
-        self.clip = Config.clip
-        self.device = Config.device
         
-    def update_hyperparam(self,Config):
+        self.voc = voc
+        self.cfg = cfg
+        self.encoder = Encoder(cfg).to(cfg.device)
+        self.decoder = Decoder(voc,cfg).to(cfg.device)
+        self.enc_optimizer = optim.Adam(self.encoder.parameters(),lr=cfg.encoder_lr)
+        self.dec_optimizer = optim.Adam(self.decoder.parameters(),lr=cfg.decoder_lr) 
+        self.device = cfg.device
+        self.epoch = 0
+        
+    def update_hyperparam(self,cfg):
 
-        self.enc_optimizer = optim.Adam(self.encoder.parameters(),lr=Config.encoder_lr)
-        self.dec_optimizer = optim.Adam(self.decoder.parameters(),lr=Config.decoder_lr)
-        self.teacher_forcing_ratio = Config.teacher_forcing_ratio
+        self.enc_optimizer = optim.Adam(self.encoder.parameters(),lr=cfg.encoder_lr)
+        self.dec_optimizer = optim.Adam(self.decoder.parameters(),lr=cfg.decoder_lr)
+        self.teacher_forcing_ratio = cfg.teacher_forcing_ratio
  
         
     def load(self,encoder_path = 'Save/VGG_encoder_10.pt',decoder_path='Save/VGG_decoder_10.pt'):
@@ -175,7 +185,7 @@ class ShowAttendTell(nn.Module):
         else:
             print('Invalid path address given.')
         
-    def train_epoch(self,dataloader):
+    def train_epoch(self,dataloader,utils):
         '''
         Function to train the model for a single epoch.
         Args:
@@ -192,14 +202,14 @@ class ShowAttendTell(nn.Module):
         iteration = 1
         for data in dataloader:
             features, targets, mask, max_length,_ = data
-            use_teacher_forcing = True if random.random() < self.teacher_forcing_ratio else False
-            loss = self.train_iter(features,targets,mask,max_length,use_teacher_forcing)
+            use_teacher_forcing = True if random.random() < self.cfg.teacher_forcing_ratio else False
+            loss = self.train_iter(utils,features,targets,mask,max_length,use_teacher_forcing)
             print_loss += loss
             total_loss += loss
 
         # Print progress
-            if iteration % self.print_every == 0:
-                print_loss_avg = print_loss / self.print_every
+            if iteration % self.cfg.print_every == 0:
+                print_loss_avg = print_loss / self.cfg.print_every
                 print("Iteration: {}; Percent complete: {:.1f}%; Average loss: {:.4f}".
                 format(iteration, iteration / len(dataloader) * 100, print_loss_avg))
                 print_loss = 0
@@ -209,7 +219,7 @@ class ShowAttendTell(nn.Module):
         return total_loss/len(dataloader)
             
         
-    def train_iter(self,input_variable, target_variable, mask,max_target_len,use_teacher_forcing):
+    def train_iter(self,utils,input_variable, target_variable, mask,max_target_len,use_teacher_forcing):
         '''
         Forward propagate input signal and update model for a single iteration. 
         
@@ -236,10 +246,10 @@ class ShowAttendTell(nn.Module):
         mask = mask.byte().to(self.device)
         
         enc_output = self.encoder(input_variable)
-        decoder_input = torch.LongTensor([[SOS_token for _ in range(self.batch_size)]])
+        decoder_input = torch.LongTensor([[SOS_token for _ in range(self.cfg.batch_size)]])
         decoder_input = decoder_input.to(self.device)
-        decoder_hidden = (torch.zeros(1, self.batch_size, self.decoder.hidden_size).to(self.device),
-                  torch.zeros(1, self.batch_size, self.decoder.hidden_size).to(self.device))
+        decoder_hidden = (torch.zeros(1, self.cfg.batch_size, self.decoder.hidden_size).to(self.device),
+                  torch.zeros(1, self.cfg.batch_size, self.decoder.hidden_size).to(self.device))
         
         # Forward batch of sequences through decoder one time step at a time
         if use_teacher_forcing:
@@ -247,7 +257,7 @@ class ShowAttendTell(nn.Module):
                 decoder_output, decoder_hidden,_ = self.decoder(decoder_input, decoder_hidden,enc_output)
                 # Teacher forcing: next input comes from ground truth(data distribution)
                 decoder_input = target_variable[t].view(1, -1)
-                mask_loss, nTotal = maskNLLLoss(decoder_output.unsqueeze(0), target_variable[t], mask[t])
+                mask_loss, nTotal = utils.maskNLLLoss(decoder_output.unsqueeze(0), target_variable[t], mask[t],self.device)
                 loss += mask_loss
                 print_losses.append(mask_loss.item() * nTotal)
                 n_totals += nTotal
@@ -259,7 +269,7 @@ class ShowAttendTell(nn.Module):
                 decoder_input = torch.LongTensor([[topi[i][0] for i in range(self.batch_size)]])
                 decoder_input = decoder_input.to(self.device)
                 # Calculate and accumulate loss
-                mask_loss, nTotal = maskNLLLoss(decoder_output, target_variable[t], mask[t])
+                mask_loss, nTotal = utils.maskNLLLoss(decoder_output, target_variable[t], mask[t],self.device)
                 loss += mask_loss
                 print_losses.append(mask_loss.item() * nTotal)
                 n_totals += nTotal
@@ -268,8 +278,8 @@ class ShowAttendTell(nn.Module):
         loss.backward()
 
         # Clip gradients: gradients are modified in place
-        _ = nn.utils.clip_grad_norm_(self.encoder.parameters(), self.clip)
-        _ = nn.utils.clip_grad_norm_(self.decoder.parameters(), self.clip)
+        _ = nn.utils.clip_grad_norm_(self.encoder.parameters(), self.cfg.clip)
+        _ = nn.utils.clip_grad_norm_(self.decoder.parameters(), self.cfg.clip)
 
         # Adjust model weights
         self.enc_optimizer.step()
@@ -305,4 +315,4 @@ class ShowAttendTell(nn.Module):
             tmp = ' '.join(x for x in tmp)
             caps_text.append(tmp)
         return caption,caps_text,torch.stack(attention_values,0).cpu().numpy()
-    
+   
