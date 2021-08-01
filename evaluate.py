@@ -1,3 +1,8 @@
+'''
+Module : evaluate
+Author : Nasibullah (nasibullah104@gmail.com)
+'''
+
 import os
 import sys
 import torch
@@ -13,13 +18,15 @@ from config import Config
 
 class Evaluator:
     
-    def __init__(self,model_name,prediction_filepath,reference_file,dataloader):
-        self.arch_name = model_name
-        self.prediction_filepath = prediction_filepath
+    def __init__(self,dataloader,path,cfg,reference_file):
+       
+        self.cfg = cfg
+        self.prediction_filepath = path.prediction_filepath
         self.dataloader = dataloader
         self.coco = COCO(reference_file)
         self.scores = {}
         self.bleu4 = 0.206 # save best model based on bleu score
+
     
     def prediction_list(self,model):
         result = []
@@ -29,21 +36,23 @@ class Evaluator:
         with torch.no_grad():
             for data in self.dataloader:
                 features, targets, mask, max_length,ides= data
-                cap,cap_txt,_ = model.Greedy_Decoding(features.to(Config.device))
+                cap,cap_txt,_ = model.Greedy_Decoding(features.to(self.cfg.device))
                 ide_list += list(ides.cpu().numpy())
                 caption_list += cap_txt
         for a in zip(ide_list,caption_list):
-            result.append({'image_id':a[0].item(),'caption':a[1].strip()})      
+            result.append({'image_id':a[0].item(),'caption':a[1].strip()})
+            
         return result
+    
     
     def prediction_file_generation(self,result,prediction_filename):
     
         self.predicted_file = os.path.join(self.prediction_filepath,prediction_filename) 
         with open(self.predicted_file, 'w') as fp:
             json.dump(result,fp)
-            
+       
     def evaluate(self,model,epoch):
-        prediction_filename = self.arch_name+str(epoch)+'.json'
+        prediction_filename = self.cfg.model_name+str(epoch)+'.json'
         result = self.prediction_list(model)
         self.prediction_file_generation(result,prediction_filename)
         
@@ -51,10 +60,11 @@ class Evaluator:
         cocoEval = COCOEvalCap(self.coco,cocoRes)
         scores = cocoEval.evaluate()
         self.scores[epoch] = scores
-        if scores[0][1][3] > self.bleu4:
-            self.bleu4 = scores[0][1][3] 
-            self.save_model(model,epoch)
+#         if scores[0][1][3] > self.bleu4:
+#             self.bleu4 = scores[0][1][3] 
+#             self.save_model(model,epoch)
         return scores
+    
     def save_model(self,model,epoch):
         print('Better result saving models....')
         encoder_filename = 'Save/'+ Config.model_name+'encoder_'+str(epoch)+'.pt'
