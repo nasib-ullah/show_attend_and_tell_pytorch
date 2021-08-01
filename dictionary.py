@@ -1,4 +1,14 @@
-import pickle
+'''
+Module :  dictionary
+Author:  Nasibullah (nasibullah104@gmail.com)
+          
+'''
+
+
+try:
+    import pickle5 as pickle
+except:
+    import pickle
 
 SOS_token = 1
 EOS_token = 2
